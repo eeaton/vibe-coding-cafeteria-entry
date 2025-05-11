@@ -3,193 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cafeteria Entry Tracker</title>
+    <title>Cafeteria Entry Tracker (No Persistence)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.1.0/dist/jsQR.min.js"></script>
-    <script type="module">
-        // Firebase SDK imports
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInWithCustomToken, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, query, orderBy, limit, onSnapshot, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // Set Firebase logging level for debugging
-        setLogLevel('Debug');
-
-        // Global variables for Firebase configuration (provided by the environment)
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
-        // Initialize Firebase App
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        const auth = getAuth(app);
-
-        // Authenticate with Firebase
-        async function authenticateFirebase() {
-            try {
-                if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken);
-                } else {
-                    await signInAnonymously(auth);
-                }
-                console.log("Firebase authenticated successfully!");
-            } catch (error) {
-                console.error("Error authenticating Firebase:", error);
-                showModal('Authentication Error', `Failed to authenticate with Firebase: ${error.message}`);
-            }
-        }
-
-        // Get the current user ID for Firestore paths
-        const getUserId = () => auth.currentUser?.uid || 'anonymous';
-
-        // Firestore collection reference for cafeteria entries
-        // Data is stored in a public collection as it's shared data for the company
-        const getEntriesCollectionRef = () => {
-            const userId = getUserId(); // Although public, userId is often used in the path structure in multi-user apps.
-            return collection(db, `artifacts/${appId}/public/data/cafeteria_entries`);
-        };
-
-        // Function to show custom modal messages
-        function showModal(title, message) {
-            const modal = document.getElementById('messageModal');
-            document.getElementById('modalTitle').textContent = title;
-            document.getElementById('modalMessage').textContent = message;
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
-        }
-
-        function hideModal() {
-            const modal = document.getElementById('messageModal');
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
-        }
-
-        // Global variables for QR scanning
-        let video;
-        let canvasElement;
-        let canvasContext;
-        let scanning = false;
-
-        // Function to start the camera and QR scanning
-        async function startScanner() {
-            try {
-                video = document.createElement('video');
-                canvasElement = document.getElementById('qr-canvas');
-                canvasContext = canvasElement.getContext('2d');
-
-                // Request camera access, prioritizing the environment-facing camera
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-                video.srcObject = stream;
-                video.setAttribute('playsinline', true); // Required for iOS
-                video.play();
-                requestAnimationFrame(tick); // Start scanning loop
-
-                document.getElementById('scanner-status').textContent = 'Camera active. Point to a QR code.';
-                document.getElementById('startScannerBtn').classList.add('hidden'); // Hide button once started
-            } catch (err) {
-                console.error("Error accessing camera:", err);
-                showModal('Camera Access Error', `Please allow camera access to use the QR scanner. Error: ${err.message}`);
-                document.getElementById('scanner-status').textContent = 'Camera access denied or error.';
-            }
-        }
-
-        // Animation loop for QR scanning
-        function tick() {
-            if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                canvasElement.hidden = false;
-                canvasElement.height = video.videoHeight;
-                canvasElement.width = video.videoWidth;
-                canvasContext.drawImage(video, 0, 0, canvasElement.width, canvasElement.height);
-                const imageData = canvasContext.getImageData(0, 0, canvasElement.width, canvasElement.height);
-                const code = jsQR(imageData.data, imageData.width, imageData.height, {
-                    inversionAttempts: "dontInvert",
-                });
-
-                if (code && code.data.startsWith("employee_id=")) {
-                    // QR code found and matches expected format
-                    const employeeId = code.data.split('=')[1];
-                    if (!scanning) { // Prevent multiple scans from the same QR code rapidly
-                        scanning = true;
-                        recordEntry('employee', employeeId);
-                        document.getElementById('scanner-status').textContent = `Employee ID: ${employeeId} detected!`;
-                        setTimeout(() => {
-                            scanning = false; // Allow scanning again after a short delay
-                            document.getElementById('scanner-status').textContent = 'Scanning...';
-                        }, 2000); // 2 second cooldown to prevent re-scans
-                    }
-                }
-            }
-            requestAnimationFrame(tick); // Continue the loop
-        }
-
-        // Function to record an entry to Firestore
-        async function recordEntry(type, employeeId = '') {
-            try {
-                await addDoc(getEntriesCollectionRef(), {
-                    type: type,
-                    employee_id: employeeId,
-                    timestamp: serverTimestamp() // Use server timestamp for consistency
-                });
-                console.log(`${type} entry recorded!`);
-                showModal('Entry Recorded', `${type === 'employee' ? `Employee ${employeeId}` : 'Guest'} entry successfully recorded.`);
-            } catch (e) {
-                console.error("Error adding document: ", e);
-                showModal('Database Error', `Failed to record entry: ${e.message}`);
-            }
-        }
-
-        // Function to display today's date
-        function displayDate() {
-            const today = new Date();
-            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-            document.getElementById('today-date').textContent = today.toLocaleDateString(undefined, options);
-        }
-
-        // Function to fetch and display recent entries
-        function listenForEntries() {
-            const entriesList = document.getElementById('recent-entries-list');
-            // Order by timestamp descending and limit to a few for recent view
-            const q = query(getEntriesCollectionRef(), orderBy('timestamp', 'desc'), limit(10));
-
-            onSnapshot(q, (snapshot) => {
-                entriesList.innerHTML = ''; // Clear existing entries
-                snapshot.forEach((doc) => {
-                    const entry = doc.data();
-                    const listItem = document.createElement('li');
-                    listItem.className = 'py-2 px-4 border-b last:border-b-0 flex justify-between items-center text-gray-700 text-sm';
-                    const timestamp = entry.timestamp ? new Date(entry.timestamp.seconds * 1000).toLocaleTimeString() : 'N/A';
-                    listItem.innerHTML = `
-                        <span><strong>${entry.type.charAt(0).toUpperCase() + entry.type.slice(1)}</strong>
-                        ${entry.employee_id ? ` (ID: ${entry.employee_id})` : ''}</span>
-                        <span class="text-xs text-gray-500">${timestamp}</span>
-                    `;
-                    entriesList.appendChild(listItem);
-                });
-            }, (error) => {
-                console.error("Error listening to entries:", error);
-                showModal('Data Fetch Error', `Failed to load recent entries: ${error.message}`);
-            });
-        }
-
-        // Event Listeners when the DOM is fully loaded
-        document.addEventListener('DOMContentLoaded', () => {
-            displayDate();
-            authenticateFirebase().then(() => {
-                listenForEntries(); // Start listening for data after authentication
-            });
-
-            // Start scanner button
-            document.getElementById('startScannerBtn').addEventListener('click', startScanner);
-
-            // Guest button functionality
-            document.getElementById('guestButton').addEventListener('click', () => recordEntry('guest'));
-
-            // Close modal button functionality
-            document.getElementById('closeModalBtn').addEventListener('click', hideModal);
-        });
-    </script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -307,34 +124,165 @@
     </div>
 
     <script>
-        // Logic for modal animation (optional, purely visual)
-        document.addEventListener('DOMContentLoaded', () => {
+        // Global variables for QR scanning
+        let video;
+        let canvasElement;
+        let canvasContext;
+        let scanning = false;
+        let entries = []; // Array to hold recent entries in memory
+
+        // Function to show custom modal messages
+        function showModal(title, message) {
+            const modal = document.getElementById('messageModal');
+            document.getElementById('modalTitle').textContent = title;
+            document.getElementById('modalMessage').textContent = message;
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            // Animation for modal appearance
+            modal.querySelector('.modal-content').classList.remove('scale-95', 'opacity-0');
+            modal.querySelector('.modal-content').classList.add('scale-100', 'opacity-100');
+        }
+
+        function hideModal() {
             const modal = document.getElementById('messageModal');
             const modalContent = modal.querySelector('.modal-content');
+            // Animation for modal disappearance
+            modalContent.classList.remove('scale-100', 'opacity-100');
+            modalContent.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }, 300); // Match this duration to the CSS transition duration
+        }
 
-            const showModalAnimation = () => {
-                modalContent.classList.remove('scale-95', 'opacity-0');
-                modalContent.classList.add('scale-100', 'opacity-100');
+        // Function to start the camera and QR scanning
+        async function startScanner() {
+            try {
+                video = document.createElement('video');
+                canvasElement = document.getElementById('qr-canvas');
+                canvasContext = canvasElement.getContext('2d');
+
+                // Request camera access, prioritizing the environment-facing camera
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                video.srcObject = stream;
+                video.setAttribute('playsinline', true); // Required for iOS
+                video.play();
+                requestAnimationFrame(tick); // Start scanning loop
+
+                document.getElementById('scanner-status').textContent = 'Camera active. Point to a QR code.';
+                document.getElementById('startScannerBtn').classList.add('hidden'); // Hide button once started
+                document.getElementById('no-camera-overlay').classList.add('hidden'); // Hide the overlay
+                canvasElement.classList.remove('hidden'); // Show the canvas
+                video.classList.remove('hidden'); // Show the video
+            } catch (err) {
+                console.error("Error accessing camera:", err);
+                showModal('Camera Access Error', `Please allow camera access to use the QR scanner. Error: ${err.message}`);
+                document.getElementById('scanner-status').textContent = 'Camera access denied or error.';
+                document.getElementById('no-camera-overlay').classList.remove('hidden'); // Ensure overlay is visible on error
+            }
+        }
+
+        // Animation loop for QR scanning
+        function tick() {
+            if (video && video.readyState === video.HAVE_ENOUGH_DATA) {
+                canvasElement.hidden = false;
+                canvasElement.height = video.videoHeight;
+                canvasElement.width = video.videoWidth;
+                canvasContext.drawImage(video, 0, 0, canvasElement.width, canvasElement.height);
+                const imageData = canvasContext.getImageData(0, 0, canvasElement.width, canvasElement.height);
+                const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                    inversionAttempts: "dontInvert",
+                });
+
+                if (code) { // If a QR code is detected
+                    if (code.data.startsWith("employee_id=")) {
+                        // QR code found and matches expected format
+                        const employeeId = code.data.split('=')[1];
+                        if (!scanning) { // Prevent multiple scans from the same QR code rapidly
+                            scanning = true;
+                            recordEntry('employee', employeeId);
+                            document.getElementById('scanner-status').textContent = `Employee ID: ${employeeId} detected!`;
+                            setTimeout(() => {
+                                scanning = false; // Allow scanning again after a short delay
+                                document.getElementById('scanner-status').textContent = 'Scanning...';
+                            }, 2000); // 2 second cooldown to prevent re-scans
+                        }
+                    } else {
+                        // QR code recognized but does not contain employee_id
+                        if (!scanning) { // Prevent repeated messages for the same unrecognized QR code
+                            scanning = true;
+                            showModal('QR Code Unrecognized', 'The scanned QR code does not contain employee ID information. Please use a valid employee QR code.');
+                            document.getElementById('scanner-status').textContent = 'QR code content not recognized.';
+                            setTimeout(() => {
+                                scanning = false; // Allow scanning again after a short delay
+                                document.getElementById('scanner-status').textContent = 'Scanning...';
+                            }, 2000); // 2 second cooldown
+                        }
+                    }
+                }
+            }
+            requestAnimationFrame(tick); // Continue the loop
+        }
+
+        // Function to record an entry and update the display
+        function recordEntry(type, employeeId = '') {
+            const newEntry = {
+                type: type,
+                employee_id: employeeId,
+                timestamp: new Date().toLocaleString() // Use local timestamp for display
             };
+            entries.unshift(newEntry); // Add to the beginning of the array (newest first)
+            if (entries.length > 10) { // Keep only the last 10 entries for display
+                entries.pop();
+            }
+            updateRecentEntriesDisplay(); // Update the UI
+            showModal('Entry Recorded', `${type === 'employee' ? `Employee ${employeeId}` : 'Guest'} entry successfully recorded.`);
+        }
 
-            const hideModalAnimation = () => {
-                modalContent.classList.remove('scale-100', 'opacity-100');
-                modalContent.classList.add('scale-95', 'opacity-0');
-            };
+        // Function to display today's date
+        function displayDate() {
+            const today = new Date();
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            document.getElementById('today-date').textContent = today.toLocaleDateString(undefined, options);
+        }
 
-            // Override the global showModal and hideModal functions for animations
-            const originalShowModal = window.showModal;
-            const originalHideModal = window.hideModal;
+        // Function to update the "Recent Entries" section
+        function updateRecentEntriesDisplay() {
+            const entriesList = document.getElementById('recent-entries-list');
+            entriesList.innerHTML = ''; // Clear existing entries
 
-            window.showModal = (title, message) => {
-                originalShowModal(title, message);
-                showModalAnimation();
-            };
+            if (entries.length === 0) {
+                const noEntriesItem = document.createElement('li');
+                noEntriesItem.className = 'py-4 px-6 text-center text-gray-500';
+                noEntriesItem.textContent = 'No entries yet...';
+                entriesList.appendChild(noEntriesItem);
+            } else {
+                entries.forEach((entry) => {
+                    const listItem = document.createElement('li');
+                    listItem.className = 'py-2 px-4 border-b last:border-b-0 flex justify-between items-center text-gray-700 text-sm';
+                    listItem.innerHTML = `
+                        <span><strong>${entry.type.charAt(0).toUpperCase() + entry.type.slice(1)}</strong>
+                        ${entry.employee_id ? ` (ID: ${entry.employee_id})` : ''}</span>
+                        <span class="text-xs text-gray-500">${entry.timestamp}</span>
+                    `;
+                    entriesList.appendChild(listItem);
+                });
+            }
+        }
 
-            window.hideModal = () => {
-                hideModalAnimation();
-                setTimeout(originalHideModal, 300); // Hide element after animation
-            };
+        // Event Listeners when the DOM is fully loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            displayDate();
+            updateRecentEntriesDisplay(); // Initialize the display with no entries
+
+            // Start scanner button
+            document.getElementById('startScannerBtn').addEventListener('click', startScanner);
+
+            // Guest button functionality
+            document.getElementById('guestButton').addEventListener('click', () => recordEntry('guest'));
+
+            // Close modal button functionality
+            document.getElementById('closeModalBtn').addEventListener('click', hideModal);
         });
     </script>
 
