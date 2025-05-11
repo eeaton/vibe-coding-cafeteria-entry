@@ -194,17 +194,30 @@
                     inversionAttempts: "dontInvert",
                 });
 
-                if (code && code.data.startsWith("employee_id=")) {
-                    // QR code found and matches expected format
-                    const employeeId = code.data.split('=')[1];
-                    if (!scanning) { // Prevent multiple scans from the same QR code rapidly
-                        scanning = true;
-                        recordEntry('employee', employeeId);
-                        document.getElementById('scanner-status').textContent = `Employee ID: ${employeeId} detected!`;
-                        setTimeout(() => {
-                            scanning = false; // Allow scanning again after a short delay
-                            document.getElementById('scanner-status').textContent = 'Scanning...';
-                        }, 2000); // 2 second cooldown to prevent re-scans
+                if (code) { // If a QR code is detected
+                    if (code.data.startsWith("employee_id=")) {
+                        // QR code found and matches expected format
+                        const employeeId = code.data.split('=')[1];
+                        if (!scanning) { // Prevent multiple scans from the same QR code rapidly
+                            scanning = true;
+                            recordEntry('employee', employeeId);
+                            document.getElementById('scanner-status').textContent = `Employee ID: ${employeeId} detected!`;
+                            setTimeout(() => {
+                                scanning = false; // Allow scanning again after a short delay
+                                document.getElementById('scanner-status').textContent = 'Scanning...';
+                            }, 2000); // 2 second cooldown to prevent re-scans
+                        }
+                    } else {
+                        // QR code recognized but does not contain employee_id
+                        if (!scanning) { // Prevent repeated messages for the same unrecognized QR code
+                            scanning = true;
+                            showModal('QR Code Unrecognized', 'The scanned QR code does not contain employee ID information. Please use a valid employee QR code.');
+                            document.getElementById('scanner-status').textContent = 'QR code content not recognized.';
+                            setTimeout(() => {
+                                scanning = false; // Allow scanning again after a short delay
+                                document.getElementById('scanner-status').textContent = 'Scanning...';
+                            }, 2000); // 2 second cooldown
+                        }
                     }
                 }
             }
