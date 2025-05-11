@@ -1,0 +1,1 @@
+# vibe-coding-cafeteria-entry
