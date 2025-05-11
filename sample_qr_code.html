@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generate Employee QR Code</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8; /* Light grey background */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .qr-container {
+            background-color: #ffffff;
+            padding: 2rem;
+            border-radius: 0.75rem; /* rounded-xl */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+        #qrcode {
+            display: block;
+            margin: 2rem auto; /* Center the QR code canvas */
+            border: 4px solid #f0f4f8; /* A subtle border around the QR code */
+            border-radius: 0.5rem;
+        }
+        h1 {
+            color: #1a202c; /* dark gray for heading */
+            font-size: 2.25rem; /* text-4xl */
+            font-weight: 700; /* font-bold */
+            margin-bottom: 1rem;
+        }
+        p {
+            color: #4a5568; /* regular gray for text */
+            font-size: 1rem;
+            margin-bottom: 1.5rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <div class="qr-container">
+        <h1>Scan Me!</h1>
+        <p>This QR code contains: <strong class="text-indigo-600">employee_id=12345</strong></p>
+        <div id="qrcode"></div>
+        <p class="text-sm text-gray-500 mt-4">Hold this QR code up to the Cafeteria Entry Tracker camera.</p>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Get the div where the QR code will be drawn
+            const qrcodeDiv = document.getElementById('qrcode');
+
+            // Define the data for the QR code
+            const qrCodeData = "employee_id=12345";
+
+            // Check if QRCode is defined before attempting to use it
+            if (typeof QRCode !== 'undefined') {
+                // Create the QR code
+                // Parameters:
+                // 1. Element to draw into (or its ID)
+                // 2. Options object
+                //    - text: The data to encode in the QR code
+                //    - width: Width of the QR code in pixels
+                //    - height: Height of the QR code in pixels
+                //    - colorDark: Color of the dark modules (default: #000000)
+                //    - colorLight: Color of the light modules (default: #ffffff)
+                //    - correctLevel: Error correction level (L, M, Q, H - default: H)
+                new QRCode(qrcodeDiv, {
+                    text: qrCodeData,
+                    width: 256, // Adjust width as needed for display
+                    height: 256, // Adjust height as needed for display
+                    colorDark : "#000000",
+                    colorLight : "#ffffff",
+                    correctLevel : QRCode.CorrectLevel.H // High error correction for better scanability
+                });
+                console.log("QR code generated successfully.");
+            } else {
+                console.error("QRCode library not loaded or defined. Please check the script link.");
+                // Optionally, display a message to the user that the QR code could not be generated.
+                qrcodeDiv.innerHTML = '<p class="text-red-500">Error: QR code generator library failed to load. Please check your internet connection or try refreshing the page.</p>';
+            }
+        });
+    </script>
+
+</body>
+</html>
